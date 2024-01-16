@@ -11,7 +11,7 @@ using OpenTelemetry;
 using OpenTelemetry.Trace;
 using OpenTelemetry.Context.Propagation;
 using System.ComponentModel;
-
+using System.Diagnostics;
 namespace SQSConsumer
 {
     public class SQSMessageConsumer
@@ -27,6 +27,7 @@ namespace SQSConsumer
         private string? _secret;
         private CancellationTokenSource _source;
         private CancellationToken _token;
+        private static readonly ActivitySource ActivitySource = new(nameof(SQSMessageConsumer));
 
         public SQSMessageConsumer()
         {
@@ -129,41 +130,39 @@ namespace SQSConsumer
             receiveMessageRequest.MaxNumberOfMessages = _maxNumberOfMessages;
             receiveMessageRequest.WaitTimeSeconds = _messageWaitTimeSeconds;
             ReceiveMessageResponse receiveMessageResponse = await _sqsClient.ReceiveMessageAsync(receiveMessageRequest, _token);
+            
 
             if (receiveMessageResponse.Messages.Count != 0)
             {
                 for (int i = 0; i < receiveMessageResponse.Messages.Count; i++)
                 {
-                    string messageBody = receiveMessageResponse.Messages[i].Body;
-                    Message message = receiveMessageResponse.Messages[i];
-                    Dictionary<string, MessageAttributeValue> messageAttributes = receiveMessageResponse.Messages[i].MessageAttributes;
-                    Console.WriteLine("Message attribs:" + String.Join(" - ", messageAttributes.ToArray()));
-
-
-                    //Console.WriteLine(receiveMessageResponse.Messages[i].Attributes);
-                    //Console.WriteLine(receiveMessageResponse.Messages[i].MessageAttributes);
-                    // foreach(KeyValuePair<String, String> attribute in receiveMessageResponse.Messages[i].Attributes){
-                    //     Console.WriteLine(attribute);
-                    //     Console.WriteLine(attribute.Key+": "+attribute.Value);
-                    // }
-
-                    
-
-                    foreach (KeyValuePair<String, Amazon.SQS.Model.MessageAttributeValue> attribute in receiveMessageResponse.Messages[i].MessageAttributes)
-                    {
-
-                        Console.WriteLine(attribute.Key + ": " + attribute.Value + " -- " + attribute.Value.StringValue);
-                    }
-
-
-
                     var parentContext = propagator.Extract(default, receiveMessageResponse.Messages[i].MessageAttributes, SQSMessageConsumer.valueGetter);
+                    
                     Console.WriteLine("Parent context: "+parentContext.ToString());
                     
-                    //using var activity = MyActivitySource.StartActivity("my-span", ActivityKind.Consumer, parentContext.ActivityContext);
-                    Console.WriteLine("Message Received: " + messageBody);
+                    string queueName = receiveMessageRequest.QueueUrl.Substring(receiveMessageRequest.QueueUrl.LastIndexOf('/')+1);
+                    var activityName = $"{queueName} receive";
+                    Console.WriteLine("Queue name: "+queueName);
+                    using var activity = ActivitySource.StartActivity(activityName, ActivityKind.Consumer, parentContext.ActivityContext);
+                    string messageBody = receiveMessageResponse.Messages[i].Body;
+                    try{
+                        Message message = receiveMessageResponse.Messages[i];
+                        Dictionary<string, MessageAttributeValue> messageAttributes = receiveMessageResponse.Messages[i].MessageAttributes;
+                        Console.WriteLine("Message attribs:" + String.Join(" - ", messageAttributes.ToArray()));                   
 
-                    await DeleteMessageAsync(receiveMessageResponse.Messages[i].ReceiptHandle);
+                        foreach (KeyValuePair<String, Amazon.SQS.Model.MessageAttributeValue> attribute in receiveMessageResponse.Messages[i].MessageAttributes)
+                        {
+                            Console.WriteLine(attribute.Key + ": " + attribute.Value + " -- " + attribute.Value.StringValue);
+                        }
+
+                        Console.WriteLine("Message Received: " + messageBody);
+
+                        await DeleteMessageAsync(receiveMessageResponse.Messages[i].ReceiptHandle);
+                    }
+                    catch (Exception ex){
+                        Console.WriteLine(ex + "\nMessage processing failed.");
+                    }
+                    
                 }
             }
             else
