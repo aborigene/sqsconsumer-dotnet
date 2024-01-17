@@ -12,6 +12,7 @@ using OpenTelemetry.Trace;
 using OpenTelemetry.Context.Propagation;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Reflection.Metadata.Ecma335;
 namespace SQSConsumer
 {
     public class SQSMessageConsumer
@@ -28,6 +29,7 @@ namespace SQSConsumer
         private CancellationTokenSource _source;
         private CancellationToken _token;
         private static readonly ActivitySource ActivitySource = new(nameof(SQSMessageConsumer));
+        private static readonly TextMapPropagator Propagator = Propagators.DefaultTextMapPropagator;
 
         public SQSMessageConsumer()
         {
@@ -56,10 +58,10 @@ namespace SQSConsumer
 
         }
 
-        private CompositeTextMapPropagator propagator = new CompositeTextMapPropagator(new TextMapPropagator[] {
+        /*private CompositeTextMapPropagator propagator = new CompositeTextMapPropagator(new TextMapPropagator[] {
             new TraceContextPropagator(),
             //new BaggagePropagator(),
-        });
+        });*/
         //private static readonly Func<Dictionary<string, string>, string, IEnumerable<string>> valueGetter = (attributes, name) => attributes.Where(attribute => attribute.Key == name);
         /*private static readonly Func<Dictionary<string, string>, string, IEnumerable<string>> valueGetter =
             (attributes, name) => new List<string>() { 
@@ -80,8 +82,16 @@ namespace SQSConsumer
 
 
 
-        private static readonly Func<Dictionary<string, MessageAttributeValue>, string, IEnumerable<string>> valueGetter = (attributes, name) => new List<string>() {
-            attributes[name].StringValue };
+        private static readonly Func<Dictionary<string, MessageAttributeValue>, string, IEnumerable<string>> valueGetter = (attributes, name) => {
+            try{
+                return new List<string>() {
+                attributes[name].StringValue };
+            }
+            catch(Exception ex){
+                return null;
+            }
+            
+        };
 
         /*private static readonly Func<Dictionary<string, string>, string, IEnumerable<string>> valueGetter = (attributes, name) => new List<string>() { 
                 KeyValuePair<string, MessageAttributeValue> messageAttribute = attributes[name];
@@ -136,7 +146,8 @@ namespace SQSConsumer
             {
                 for (int i = 0; i < receiveMessageResponse.Messages.Count; i++)
                 {
-                    var parentContext = propagator.Extract(default, receiveMessageResponse.Messages[i].MessageAttributes, SQSMessageConsumer.valueGetter);
+                    
+                    var parentContext = Propagator.Extract(default, receiveMessageResponse.Messages[i].MessageAttributes, SQSMessageConsumer.valueGetter);
                     
                     Console.WriteLine("Parent context: "+parentContext.ToString());
                     
