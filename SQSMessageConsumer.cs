@@ -29,7 +29,7 @@ namespace SQSConsumer
         private CancellationTokenSource _source;
         private CancellationToken _token;
         private static readonly ActivitySource ActivitySource = new(nameof(SQSMessageConsumer));
-        private static readonly TextMapPropagator Propagator = Propagators.DefaultTextMapPropagator;
+        //private static readonly TextMapPropagator Propagator = Propagators.DefaultTextMapPropagator;
 
         public SQSMessageConsumer()
         {
@@ -57,45 +57,15 @@ namespace SQSConsumer
             Console.CancelKeyPress += new ConsoleCancelEventHandler(CancelKeyPressHandler);
 
         }
-
-        /*private CompositeTextMapPropagator propagator = new CompositeTextMapPropagator(new TextMapPropagator[] {
-            new TraceContextPropagator(),
-            //new BaggagePropagator(),
-        });*/
-        //private static readonly Func<Dictionary<string, string>, string, IEnumerable<string>> valueGetter = (attributes, name) => attributes.Where(attribute => attribute.Key == name);
-        /*private static readonly Func<Dictionary<string, string>, string, IEnumerable<string>> valueGetter =
-            (attributes, name) => new List<string>() { 
-                KeyValuePair<string, MessageAttributeValue> messageAttribute = attributes[name];
-            };*/
-
-        //     private static readonly Func<Dictionary<string, MessageAttributeValue>, string, IEnumerable<string>> valueGetter = (attributes, name) =>
-        //     {
-        //         new List<string>() {
-        //             attributes.Values;
-        //     };
-        // };
-
-        // public static IEnumerable<string> ValueGetter(Dictionary<string, MessageAttributeValue> carrier, string name)
-        // {
-        //     return carrier.Values.GetEnumerator();
-        // }
-
-
-
-        private static readonly Func<Dictionary<string, MessageAttributeValue>, string, IEnumerable<string>> valueGetter = (attributes, name) => {
-            try{
-                return new List<string>() {
-                attributes[name].StringValue };
+        private static readonly Func<Dictionary<string, MessageAttributeValue>, string, IEnumerable<string>> valueGetter = (attributes, name) =>
+        {
+            if (attributes.ContainsKey(name))
+            {
+                return new string[1] { attributes[name].StringValue };
             }
-            catch(Exception ex){
-                return null;
-            }
-            
+
+            return Enumerable.Empty<string>();
         };
-
-        /*private static readonly Func<Dictionary<string, string>, string, IEnumerable<string>> valueGetter = (attributes, name) => new List<string>() { 
-                KeyValuePair<string, MessageAttributeValue> messageAttribute = attributes[name];
-            };*/
 
         public async Task Listen()
         {
@@ -147,8 +117,8 @@ namespace SQSConsumer
                 for (int i = 0; i < receiveMessageResponse.Messages.Count; i++)
                 {
                     
-                    var parentContext = Propagator.Extract(default, receiveMessageResponse.Messages[i].MessageAttributes, SQSMessageConsumer.valueGetter);
-                    
+                    //var parentContext =                         Propagator.Extract(default, receiveMessageResponse.Messages[i].MessageAttributes, SQSMessageConsumer.valueGetter);
+                    var parentContext = Propagators.DefaultTextMapPropagator.Extract(default, receiveMessageResponse.Messages[i].MessageAttributes, SQSMessageConsumer.valueGetter);
                     Console.WriteLine("Parent context: "+parentContext.ToString());
                     
                     string queueName = receiveMessageRequest.QueueUrl.Substring(receiveMessageRequest.QueueUrl.LastIndexOf('/')+1);
@@ -173,8 +143,10 @@ namespace SQSConsumer
                     catch (Exception ex){
                         Console.WriteLine(ex + "\nMessage processing failed.");
                     }
-                    
                 }
+                    
+                    
+                
             }
             else
             {
